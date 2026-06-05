@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#3A2208" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Quarto" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>Quarto</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+    body { background: #2A1205; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.35; transform: scale(1); }
+      50%       { opacity: 0.75; transform: scale(1.15); }
+    }
+    button:hover { opacity: 0.88; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    // ── Piece data: 16 unique pieces, 4 binary attributes ───────────────────
+    const ALL_PIECES = Array.from({ length: 16 }, (_, i) => ({
+      id: i,
+      tall:   !!(i & 8),
+      light:  !!(i & 4),
+      square: !!(i & 2),
+      hollow: !!(i & 1),
+    }));
+
+    // ── Win logic ────────────────────────────────────────────────────────────
+    const WIN_LINES = [
+      [[0,0],[0,1],[0,2],[0,3]], [[1,0],[1,1],[1,2],[1,3]],
+      [[2,0],[2,1],[2,2],[2,3]], [[3,0],[3,1],[3,2],[3,3]],
+      [[0,0],[1,0],[2,0],[3,0]], [[0,1],[1,1],[2,1],[3,1]],
+      [[0,2],[1,2],[2,2],[3,2]], [[0,3],[1,3],[2,3],[3,3]],
+      [[0,0],[1,1],[2,2],[3,3]], [[0,3],[1,2],[2,1],[3,0]],
+    ];
+
+    const sharesAttr = (pieces) => {
+      if (pieces.some(p => !p)) return false;
+      return ['tall','light','square','hollow'].some(
+        attr => pieces.every(p => p[attr]) || pieces.every(p => !p[attr])
+      );
+    };
+
+    const checkWin = (board) => {
+      for (const line of WIN_LINES) {
+        if (sharesAttr(line.map(([r,c]) => board[r][c]))) return line;
+      }
+      return null;
+    };
+
+    // ── Palette ──────────────────────────────────────────────────────────────
+    const C = {
+      appBg:       'radial-gradient(ellipse at 40% 30%, #F5EFE3 0%, #EDE3D0 55%, #E2D5BE 100%)',
+      boardBg:     'linear-gradient(150deg, #4A2E0A 0%, #3A2208 45%, #4A2E0A 100%)',
+      boardBorder: '#2A1404',
+      cell:        '#C8A878',
+      cellWin:     'rgba(176,120,48,0.38)',
+      cellWinBorder: '#B0783088',
+      cellBorder:  'rgba(140,110,70,0.2)',
+      amber:       '#B07830',
+      amberLight:  '#D4A050',
+      ink:         '#3A2810',
+      inkMid:      '#6B4F32',
+      inkLight:    '#9E7D5A',
+      pieceLight:  '#EDD9A3',
+      pieceLightEdge: '#C4A35A',
+      pieceDark:   '#3A2010',
+    };
+
+    // ── Piece SVG ────────────────────────────────────────────────────────────
+    const Piece = ({ piece, size = 44, muted = false }) => {
+      const { tall, light, square, hollow } = piece;
+      const dim  = tall ? size * 0.80 : size * 0.50;
+      const cx   = size / 2;
+      const fill = light ? C.pieceLight : C.pieceDark;
+      const edge = light ? C.pieceLightEdge : '#1E0E04';
+      const sw   = hollow ? Math.max(dim * 0.165, 2.5) : (light ? 1.5 : 0.5);
+
+      return (
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+          style={{ opacity: muted ? 0.2 : 1, transition: 'opacity 0.2s', display: 'block' }}>
+          {square ? (
+            <rect x={cx-dim/2} y={cx-dim/2} width={dim} height={dim} rx={dim*0.09}
+              fill={hollow ? 'transparent' : fill}
+              stroke={hollow ? fill : edge}
+              strokeWidth={sw} />
+          ) : (
+            <circle cx={cx} cy={cx} r={dim/2}
+              fill={hollow ? 'transparent' : fill}
+              stroke={hollow ? fill : edge}
+              strokeWidth={sw} />
+          )}
+        </svg>
+      );
+    };
+
+    const pieceLabel = ({ tall, light, square, hollow }) =>
+      [tall?'Tall':'Short', light?'Light':'Dark',
+       square?'Square':'Round', hollow?'Hollow':'Solid'].join(' · ');
+
+    // ── Sound ────────────────────────────────────────────────────────────────
+    const playSlam = () => {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+      osc.connect(oscGain); oscGain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.12);
+      oscGain.gain.setValueAtTime(1.0, ctx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.22);
+
+      const osc2 = ctx.createOscillator();
+      const osc2Gain = ctx.createGain();
+      osc2.connect(osc2Gain); osc2Gain.connect(ctx.destination);
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(80, ctx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.18);
+      osc2Gain.gain.setValueAtTime(0.7, ctx.currentTime);
+      osc2Gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc2.start(ctx.currentTime); osc2.stop(ctx.currentTime + 0.25);
+
+      const bufferSize = Math.floor(ctx.sampleRate * 0.08);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass'; filter.frequency.value = 400;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(1.4, ctx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+      noise.connect(filter); filter.connect(noiseGain); noiseGain.connect(ctx.destination);
+      noise.start(ctx.currentTime); noise.stop(ctx.currentTime + 0.08);
+    };
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    const initState = () => ({
+      board:         Array(4).fill(null).map(() => Array(4).fill(null)),
+      available:     [...ALL_PIECES],
+      activePiece:   null,
+      selectedPiece: null,
+      phase:         'select',
+      currentPlayer: 1,
+      winLine:       null,
+      winner:        null,
+      isDraw:        false,
+    });
+
+    // ── App ───────────────────────────────────────────────────────────────────
+    function QuartoGame() {
+      const [gs, setGs] = useState(initState());
+      const { board, available, activePiece, selectedPiece,
+              phase, currentPlayer, winLine, winner, isDraw } = gs;
+
+      const placedIds = new Set(board.flatMap(r => r.filter(Boolean).map(p => p.id)));
+      const isAvail   = (p) => available.some(a => a.id === p.id);
+      const isWinCell = (r, c) => winLine?.some(([wr,wc]) => wr===r && wc===c);
+      const gameOver  = !!(winLine || isDraw);
+
+      const selectPiece = (piece) => {
+        if (phase !== 'select' || gameOver || !isAvail(piece)) return;
+        setGs(prev => ({ ...prev,
+          selectedPiece: prev.selectedPiece?.id === piece.id ? null : piece }));
+      };
+
+      const confirmGive = () => {
+        if (!selectedPiece) return;
+        playSlam();
+        setGs(prev => ({
+          ...prev,
+          available:     prev.available.filter(p => p.id !== prev.selectedPiece.id),
+          activePiece:   prev.selectedPiece,
+          selectedPiece: null,
+          phase:         'place',
+          currentPlayer: prev.currentPlayer === 1 ? 2 : 1,
+        }));
+      };
+
+      const placeOnBoard = (r, c) => {
+        if (phase !== 'place' || gameOver || !activePiece || board[r][c]) return;
+        const newBoard = board.map(row => [...row]);
+        newBoard[r][c] = activePiece;
+        const win = checkWin(newBoard);
+        if (win) {
+          setGs(prev => ({ ...prev, board: newBoard, activePiece: null,
+            winLine: win, winner: prev.currentPlayer }));
+          return;
+        }
+        if (available.length === 0) {
+          setGs(prev => ({ ...prev, board: newBoard, activePiece: null, isDraw: true }));
+          return;
+        }
+        setGs(prev => ({ ...prev, board: newBoard, activePiece: null, phase: 'select' }));
+      };
+
+      const reset = () => setGs(initState());
+
+      return (
+        <div style={{
+          minHeight: '100vh', background: C.appBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: "'Georgia', 'Times New Roman', serif",
+          padding: '16px', boxSizing: 'border-box',
+          position: 'relative', overflow: 'hidden',
+        }}>
+          {/* Linen texture */}
+          <div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.6,
+            backgroundImage: `
+              repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(180,150,100,0.04) 3px, rgba(180,150,100,0.04) 4px),
+              repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(180,150,100,0.03) 3px, rgba(180,150,100,0.03) 4px)
+            `,
+          }} />
+
+          <div style={{
+            display: 'flex', gap: '20px', alignItems: 'center',
+            width: '100%', maxWidth: '880px', position: 'relative', zIndex: 1,
+          }}>
+
+            {/* ── Left Panel ───────────────────────────────────────────────── */}
+            <div style={{ width: '175px', flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              <div>
+                <h1 style={{ margin: 0, fontSize: '32px', letterSpacing: '7px',
+                  color: C.amber, fontWeight: 700,
+                  textShadow: `0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(176,120,48,0.2)` }}>
+                  QUARTO
+                </h1>
+                <p style={{ margin: '3px 0 0', color: C.inkLight, fontSize: '9px',
+                  letterSpacing: '2.5px', textTransform: 'uppercase' }}>
+                  Abstract Strategy
+                </p>
+              </div>
+
+              {!gameOver ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{
+                    display: 'inline-block', padding: '6px 12px', borderRadius: '5px',
+                    background: currentPlayer === 1
+                      ? 'linear-gradient(135deg, #C8A878, #B09060)'
+                      : 'linear-gradient(135deg, #8C6840, #705030)',
+                    boxShadow: '0 2px 6px rgba(100,70,30,0.2)',
+                    color: '#FFF8EE', fontSize: '12px', letterSpacing: '2px',
+                    textTransform: 'uppercase', fontWeight: 'bold',
+                  }}>
+                    Player {currentPlayer}
+                  </div>
+                  <p style={{ margin: 0, color: C.inkMid, fontSize: '13px', lineHeight: 1.65 }}>
+                    {phase === 'select'
+                      ? <span>Tap a piece to give<br />to your opponent.</span>
+                      : <span>Place the piece<br />on the board.</span>}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ margin: 0, color: C.amber, fontSize: '22px',
+                    fontWeight: 'bold', lineHeight: 1.3 }}>
+                    {isDraw ? 'Draw!' : `Player ${winner} Wins!`}
+                  </p>
+                  <button onClick={reset} style={{
+                    background: 'transparent', border: `1.5px solid ${C.amber}`,
+                    color: C.amber, padding: '9px 14px', borderRadius: '6px',
+                    cursor: 'pointer', fontSize: '11px', letterSpacing: '2px',
+                    fontFamily: 'Georgia, serif', textTransform: 'uppercase',
+                  }}>New Game</button>
+                </div>
+              )}
+
+              {activePiece && phase === 'place' && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+                  padding: '12px 8px', borderRadius: '8px',
+                  background: 'rgba(255,255,255,0.6)', border: `1px solid ${C.amber}55`,
+                  boxShadow: '0 2px 10px rgba(176,120,48,0.12)',
+                }}>
+                  <p style={{ margin: 0, color: C.amber, fontSize: '9px',
+                    letterSpacing: '2px', textTransform: 'uppercase' }}>Must Place</p>
+                  <Piece piece={activePiece} size={58} />
+                  <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
+                    textAlign: 'center', lineHeight: 1.4 }}>{pieceLabel(activePiece)}</p>
+                </div>
+              )}
+
+              {phase === 'select' && selectedPiece && !gameOver && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                    padding: '8px', borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.6)', border: `1px dashed ${C.amber}66`,
+                  }}>
+                    <Piece piece={selectedPiece} size={42} />
+                    <p style={{ margin: 0, color: C.inkLight, fontSize: '9px', textAlign: 'center' }}>
+                      {pieceLabel(selectedPiece)}
+                    </p>
+                  </div>
+                  <button onClick={confirmGive} style={{
+                    background: `linear-gradient(135deg, ${C.amberLight}, ${C.amber})`,
+                    color: '#FFF8EE', border: 'none',
+                    padding: '10px 0', borderRadius: '6px', cursor: 'pointer',
+                    fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px',
+                    fontFamily: 'Georgia, serif', width: '100%',
+                    boxShadow: '0 3px 10px rgba(176,120,48,0.3)',
+                  }}>Give to Opponent →</button>
+                </div>
+              )}
+
+              <div style={{ marginTop: 'auto', paddingTop: '10px',
+                borderTop: `1px solid rgba(140,110,70,0.2)` }}>
+                <p style={{ margin: '0 0 5px', color: C.inkLight, fontSize: '8.5px',
+                  letterSpacing: '1.5px', textTransform: 'uppercase' }}>Attributes</p>
+                {[['Size','Tall · Short'],['Color','Light · Dark'],
+                  ['Shape','Square · Round'],['Fill','Hollow · Solid']].map(([k,v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <span style={{ color: C.inkLight, fontSize: '9px' }}>{k}</span>
+                    <span style={{ color: C.amber, fontSize: '9px' }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Board ────────────────────────────────────────────────────── */}
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 80px)',
+                gridTemplateRows: 'repeat(4, 80px)',
+                gap: '4px', padding: '14px',
+                background: C.boardBg, borderRadius: '10px',
+                border: `2px solid ${C.boardBorder}`,
+                boxShadow: '0 8px 32px rgba(100,70,30,0.22), 0 2px 0 rgba(255,255,255,0.7), inset 0 1px 0 rgba(255,255,255,0.5)',
+              }}>
+                {board.map((row, r) => row.map((cell, c) => {
+                  const isWin   = isWinCell(r, c);
+                  const canDrop = phase === 'place' && !cell && !gameOver && activePiece;
+                  return (
+                    <div key={`${r}-${c}`} onClick={() => placeOnBoard(r, c)}
+                      title={cell ? pieceLabel(cell) : ''}
+                      style={{
+                        width: '80px', height: '80px', borderRadius: '5px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isWin ? C.cellWin : C.cell,
+                        border: `1px solid ${isWin ? C.cellWinBorder : C.cellBorder}`,
+                        cursor: canDrop ? 'pointer' : 'default',
+                        boxShadow: isWin
+                          ? `inset 0 0 16px rgba(176,120,48,0.3), 0 0 8px rgba(176,120,48,0.15)`
+                          : 'inset 0 1px 0 rgba(255,255,255,0.4)',
+                        transition: 'background 0.18s, box-shadow 0.18s',
+                      }}>
+                      {cell && <Piece piece={cell} size={56} />}
+                      {!cell && canDrop && (
+                        <div style={{
+                          width: '26px', height: '26px', borderRadius: '50%',
+                          border: `2px dashed rgba(176,120,48,0.4)`,
+                          animation: 'pulse 1.8s ease-in-out infinite',
+                        }} />
+                      )}
+                    </div>
+                  );
+                }))}
+              </div>
+            </div>
+
+            {/* ── Piece Tray ───────────────────────────────────────────────── */}
+            <div style={{ width: '155px', flexShrink: 0,
+              display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
+                letterSpacing: '2px', textTransform: 'uppercase' }}>
+                {available.length} of 16 left
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+                {ALL_PIECES.map(piece => {
+                  const avail    = isAvail(piece);
+                  const placed   = placedIds.has(piece.id);
+                  const isActive = activePiece?.id === piece.id;
+                  const isSel    = selectedPiece?.id === piece.id;
+                  const muted    = placed || isActive;
+                  const clickable = avail && phase === 'select' && !gameOver;
+                  return (
+                    <div key={piece.id} onClick={() => clickable && selectPiece(piece)}
+                      title={pieceLabel(piece)}
+                      style={{
+                        width: '33px', height: '33px', borderRadius: '5px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: isSel ? `rgba(176,120,48,0.15)` : 'rgba(255,255,255,0.5)',
+                        border: `1.5px solid ${isSel ? C.amber : 'rgba(140,110,70,0.2)'}`,
+                        cursor: clickable ? 'pointer' : 'default',
+                        transform: isSel ? 'scale(1.12)' : 'scale(1)',
+                        transition: 'all 0.12s ease',
+                        boxShadow: isSel ? `0 0 8px rgba(176,120,48,0.35)` : '0 1px 2px rgba(100,70,30,0.08)',
+                      }}>
+                      <Piece piece={piece} size={27} muted={muted} />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: '10px', paddingTop: '10px',
+                borderTop: `1px solid rgba(140,110,70,0.2)` }}>
+                <p style={{ margin: '0 0 6px', color: C.inkLight, fontSize: '8px', lineHeight: 1.5 }}>
+                  4 in a row, col, or diagonal sharing any attribute wins.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<QuartoGame />);
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .catch(err => console.log('SW error:', err));
+      });
+    }
+  </script>
+</body>
+</html>
