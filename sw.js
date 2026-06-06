@@ -1,4 +1,4 @@
-const CACHE = 'quarto-v1';
+const CACHE = 'quarto-v2';
 
 const ASSETS = [
   './',
