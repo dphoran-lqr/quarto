@@ -29,7 +29,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const { useState } = React;
+    const { useState, useEffect } = React;
 
     // ── Piece data: 16 unique pieces, 4 binary attributes ───────────────────
     const ALL_PIECES = Array.from({ length: 16 }, (_, i) => ({
@@ -168,6 +168,32 @@
     // ── App ───────────────────────────────────────────────────────────────────
     function QuartoGame() {
       const [gs, setGs] = useState(initState());
+      const [cellSize, setCellSize] = useState(80);
+
+      useEffect(() => {
+        const calc = () => {
+          // Board needs: 4 cells + 3 gaps(4px) + 2 padding(14px) + 2 border(2px)
+          // Panels need roughly 2.2 and 2.0 cell-widths + gaps
+          // Total horiz: leftPanel + gap + board + gap + rightPanel
+          //            = 2.2*c + 20 + (4c+56) + 20 + 2.0*c = 8.2c + 96
+          // Total vert:  board height = 4c + 56, want that <= vh - 40
+          const maxFromHeight = (window.innerHeight - 60) / 4.4;
+          const maxFromWidth  = (window.innerWidth  - 96) / 8.4;
+          const size = Math.floor(Math.min(maxFromHeight, maxFromWidth));
+          setCellSize(Math.max(60, size));
+        };
+        calc();
+        window.addEventListener('resize', calc);
+        return () => window.removeEventListener('resize', calc);
+      }, []);
+
+      const C_SIZE = cellSize;
+      const leftW  = Math.round(cellSize * 2.15);
+      const rightW = Math.round(cellSize * 1.95);
+      const trayItem = Math.round(cellSize * 0.42);
+      const pieceMain = Math.round(cellSize * 0.68);
+      const pieceActive = Math.round(cellSize * 0.72);
+      const pieceTray = Math.round(cellSize * 0.33);
       const { board, available, activePiece, selectedPiece,
               phase, currentPlayer, winLine, winner, isDraw } = gs;
 
@@ -233,11 +259,12 @@
 
           <div style={{
             display: 'flex', gap: '20px', alignItems: 'center',
-            width: '100%', maxWidth: '880px', position: 'relative', zIndex: 1,
+            width: '100%', position: 'relative', zIndex: 1,
+            justifyContent: 'center',
           }}>
 
             {/* ── Left Panel ───────────────────────────────────────────────── */}
-            <div style={{ width: '175px', flexShrink: 0,
+            <div style={{ width: leftW, flexShrink: 0,
               display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
               <div>
@@ -295,7 +322,7 @@
                 }}>
                   <p style={{ margin: 0, color: C.amber, fontSize: '9px',
                     letterSpacing: '2px', textTransform: 'uppercase' }}>Must Place</p>
-                  <Piece piece={activePiece} size={58} />
+                  <Piece piece={activePiece} size={pieceActive} />
                   <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
                     textAlign: 'center', lineHeight: 1.4 }}>{pieceLabel(activePiece)}</p>
                 </div>
@@ -308,7 +335,7 @@
                     padding: '8px', borderRadius: '6px',
                     background: 'rgba(255,255,255,0.6)', border: `1px dashed ${C.amber}66`,
                   }}>
-                    <Piece piece={selectedPiece} size={42} />
+                    <Piece piece={selectedPiece} size={pieceActive} />
                     <p style={{ margin: 0, color: C.inkLight, fontSize: '9px', textAlign: 'center' }}>
                       {pieceLabel(selectedPiece)}
                     </p>
@@ -339,11 +366,11 @@
             </div>
 
             {/* ── Board ────────────────────────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(4, 80px)',
-                gridTemplateRows: 'repeat(4, 80px)',
+                gridTemplateColumns: `repeat(4, ${C_SIZE}px)`,
+                gridTemplateRows: `repeat(4, ${C_SIZE}px)`,
                 gap: '4px', padding: '14px',
                 background: C.boardBg, borderRadius: '10px',
                 border: `2px solid ${C.boardBorder}`,
@@ -356,7 +383,7 @@
                     <div key={`${r}-${c}`} onClick={() => placeOnBoard(r, c)}
                       title={cell ? pieceLabel(cell) : ''}
                       style={{
-                        width: '80px', height: '80px', borderRadius: '5px',
+                        width: C_SIZE, height: C_SIZE, borderRadius: '5px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: isWin ? C.cellWin : C.cell,
                         border: `1px solid ${isWin ? C.cellWinBorder : C.cellBorder}`,
@@ -366,10 +393,11 @@
                           : 'inset 0 1px 0 rgba(255,255,255,0.4)',
                         transition: 'background 0.18s, box-shadow 0.18s',
                       }}>
-                      {cell && <Piece piece={cell} size={56} />}
+                      {cell && <Piece piece={cell} size={pieceMain} />}
                       {!cell && canDrop && (
                         <div style={{
-                          width: '26px', height: '26px', borderRadius: '50%',
+                          width: Math.round(C_SIZE * 0.3), height: Math.round(C_SIZE * 0.3),
+                          borderRadius: '50%',
                           border: `2px dashed rgba(176,120,48,0.4)`,
                           animation: 'pulse 1.8s ease-in-out infinite',
                         }} />
@@ -381,7 +409,7 @@
             </div>
 
             {/* ── Piece Tray ───────────────────────────────────────────────── */}
-            <div style={{ width: '155px', flexShrink: 0,
+            <div style={{ width: rightW, flexShrink: 0,
               display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
                 letterSpacing: '2px', textTransform: 'uppercase' }}>
@@ -399,7 +427,7 @@
                     <div key={piece.id} onClick={() => clickable && selectPiece(piece)}
                       title={pieceLabel(piece)}
                       style={{
-                        width: '33px', height: '33px', borderRadius: '5px',
+                        width: trayItem, height: trayItem, borderRadius: '5px',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: isSel ? `rgba(176,120,48,0.15)` : 'rgba(255,255,255,0.5)',
                         border: `1.5px solid ${isSel ? C.amber : 'rgba(140,110,70,0.2)'}`,
@@ -408,7 +436,7 @@
                         transition: 'all 0.12s ease',
                         boxShadow: isSel ? `0 0 8px rgba(176,120,48,0.35)` : '0 1px 2px rgba(100,70,30,0.08)',
                       }}>
-                      <Piece piece={piece} size={27} muted={muted} />
+                      <Piece piece={piece} size={pieceTray} muted={muted} />
                     </div>
                   );
                 })}
