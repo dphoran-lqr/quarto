@@ -1,478 +1,433 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#3A2208" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Quarto" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-  <title>Quarto</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Punto"/>
+  <meta name="theme-color" content="#F4EEE0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="icon" type="image/svg+xml" href="icon.svg"/>
+  <link rel="apple-touch-icon" href="icon-512.png"/>
+  <title>Punto</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
-    body { background: #2A1205; }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.35; transform: scale(1); }
-      50%       { opacity: 0.75; transform: scale(1.15); }
+    @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;700&display=swap');
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html, body, #root { width:100%; height:100%; overflow:hidden; background:#F4EEE0; }
+    body { touch-action:manipulation; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+    @keyframes flipIn {
+      0%   { transform:perspective(280px) rotateX(82deg) scale(0.82); opacity:0; }
+      65%  { transform:perspective(280px) rotateX(-7deg) scale(1.04); opacity:1; }
+      100% { transform:perspective(280px) rotateX(0deg)  scale(1);    opacity:1; }
     }
-    button:hover { opacity: 0.88; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
+<script type="text/babel">
+  const { useState, useCallback, useEffect } = React;
 
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  // ── CONFIG ───────────────────────────────────────────────────────────────────
+  const G       = 6;  // max bounding-box size (play-area rule)
+  const DISPLAY = 8;  // visible grid cells — always 1-cell buffer around play area
+  const STRIP   = 74; // player-strip thickness px
+  const BUFFER  = (DISPLAY - G) / 2; // = 1
 
-  <script type="text/babel">
-    const { useState, useEffect } = React;
+  // Counter-clockwise order: Red(bottom) → Yellow(left) → Green(top) → Blue(right)
+  const PL = [
+    { id:1, name:"Red",    color:"#CC2020", area:"p1", rot:0,   isV:false },
+    { id:4, name:"Yellow", color:"#D4900A", area:"p4", rot:90,  isV:true  },
+    { id:3, name:"Green",  color:"#1A7A30", area:"p3", rot:180, isV:false },
+    { id:2, name:"Blue",   color:"#1555BB", area:"p2", rot:-90, isV:true  },
+  ];
 
-    // ── Piece data: 16 unique pieces, 4 binary attributes ───────────────────
-    const ALL_PIECES = Array.from({ length: 16 }, (_, i) => ({
-      id: i,
-      tall:   !!(i & 8),
-      light:  !!(i & 4),
-      square: !!(i & 2),
-      hollow: !!(i & 1),
-    }));
+  const PIPS = {
+    1:[[1,1]], 2:[[0,2],[2,0]], 3:[[0,2],[1,1],[2,0]],
+    4:[[0,0],[0,2],[2,0],[2,2]], 5:[[0,0],[0,2],[1,1],[2,0],[2,2]],
+    6:[[0,0],[1,0],[2,0],[0,2],[1,2],[2,2]],
+    7:[[0,0],[1,0],[2,0],[0,1],[0,2],[1,2],[2,2]],
+    8:[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[1,2],[2,2]],
+    9:[[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]],
+  };
 
-    // ── Win logic ────────────────────────────────────────────────────────────
-    const WIN_LINES = [
-      [[0,0],[0,1],[0,2],[0,3]], [[1,0],[1,1],[1,2],[1,3]],
-      [[2,0],[2,1],[2,2],[2,3]], [[3,0],[3,1],[3,2],[3,3]],
-      [[0,0],[1,0],[2,0],[3,0]], [[0,1],[1,1],[2,1],[3,1]],
-      [[0,2],[1,2],[2,2],[3,2]], [[0,3],[1,3],[2,3],[3,3]],
-      [[0,0],[1,1],[2,2],[3,3]], [[0,3],[1,2],[2,1],[3,0]],
-    ];
+  // ── VISUAL COMPONENTS ────────────────────────────────────────────────────────
+  function HandCard({ value, playerId, size=62 }) {
+    const pl = PL.find(p=>p.id===playerId);
+    if (!value||!pl) return null;
+    const pips=PIPS[value]||[], rad=Math.round(size*0.1);
+    return (
+      <div key={`hc-${playerId}-${value}`} style={{
+        width:size,height:size,background:"#252525",borderRadius:rad,position:"relative",
+        border:`2px solid ${pl.color}`,
+        boxShadow:`0 5px 18px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.08)`,
+        flexShrink:0,animation:"flipIn 0.42s cubic-bezier(0.34,1.18,0.64,1) both",overflow:"hidden",
+      }}>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(140deg,rgba(255,255,255,0.08) 0%,transparent 55%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",top:"5%",left:"9%",color:"rgba(255,255,255,0.5)",fontSize:Math.round(size*0.17),fontFamily:"'Lora','Georgia',serif",fontWeight:"700",lineHeight:1}}>{value}</div>
+        <div style={{position:"absolute",bottom:"5%",right:"9%",color:"rgba(255,255,255,0.5)",fontSize:Math.round(size*0.17),fontFamily:"'Lora','Georgia',serif",fontWeight:"700",lineHeight:1,transform:"rotate(180deg)"}}>{value}</div>
+        <div style={{position:"absolute",top:"19%",left:"16%",right:"16%",bottom:"19%",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"1fr 1fr 1fr"}}>
+          {Array.from({length:9},(_,i)=>{
+            const row=Math.floor(i/3),col=i%3,on=pips.some(([r,c])=>r===row&&c===col);
+            return <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"center"}}>{on&&<div style={{width:"70%",aspectRatio:"1/1",borderRadius:"50%",background:pl.color,boxShadow:`0 1px 4px rgba(0,0,0,0.5),0 0 5px ${pl.color}55`}}/>}</div>;
+          })}
+        </div>
+      </div>
+    );
+  }
 
-    const sharesAttr = (pieces) => {
-      if (pieces.some(p => !p)) return false;
-      return ['tall','light','square','hollow'].some(
-        attr => pieces.every(p => p[attr]) || pieces.every(p => !p[attr])
-      );
-    };
+  function CellCard({ value, playerId, isWin }) {
+    const pl=PL.find(p=>p.id===playerId);
+    if (!value||!pl) return null;
+    const pips=PIPS[value]||[];
+    return (
+      <div style={{
+        position:"absolute",inset:"5%",background:"#232323",borderRadius:"9%",
+        border:isWin?`2.5px solid ${pl.color}`:`1.5px solid ${pl.color}44`,
+        boxShadow:isWin?`0 0 14px ${pl.color}77`:"0 1px 6px rgba(0,0,0,0.32)",overflow:"hidden",
+      }}>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(140deg,rgba(255,255,255,0.07) 0%,transparent 55%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",inset:"17%",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gridTemplateRows:"1fr 1fr 1fr"}}>
+          {Array.from({length:9},(_,i)=>{
+            const row=Math.floor(i/3),col=i%3,on=pips.some(([r,c])=>r===row&&c===col);
+            return <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"center"}}>{on&&<div style={{width:"68%",aspectRatio:"1/1",borderRadius:"50%",background:pl.color,boxShadow:isWin?`0 0 5px ${pl.color}`:"none"}}/>}</div>;
+          })}
+        </div>
+      </div>
+    );
+  }
 
-    const checkWin = (board) => {
-      for (const line of WIN_LINES) {
-        if (sharesAttr(line.map(([r,c]) => board[r][c]))) return line;
+  function Cell({ cell, valid, win, buffer, activeColor, onClick }) {
+    return (
+      <div onClick={onClick} style={{
+        aspectRatio:"1/1",
+        // Buffer cells (outer ring when no cards near them) are slightly dimmer
+        background: buffer && !cell ? "#F7F3EA" : "#FDFAF4",
+        border: win   ? `2px solid ${activeColor}`
+              : valid ? `2px dashed ${activeColor}66`
+              :         `1px solid ${buffer&&!cell?"#E0D5C0":"#D4C5AA"}`,
+        borderRadius:"5px",
+        position:"relative",
+        cursor:valid?"pointer":"default",
+        boxShadow: win   ? `0 0 14px ${activeColor}44`
+                 : valid ? `0 0 6px ${activeColor}1A`
+                 :         "inset 0 1px 0 rgba(255,255,255,0.9),0 1px 2px rgba(0,0,0,0.04)",
+        transition:"border 0.1s,box-shadow 0.1s",
+        overflow:"hidden",
+      }}>
+        {cell && <CellCard value={cell.value} playerId={cell.player} isWin={win}/>}
+        {valid&&!cell&&(
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{width:"18%",aspectRatio:"1/1",borderRadius:"50%",background:`${activeColor}44`}}/>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function Strip({ pl, card, isActive, isFirst }) {
+    const inner=(
+      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:"14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"7px",opacity:isActive?1:0.28,transition:"opacity 0.35s"}}>
+          <div style={{
+            width:isFirst?11:9,height:isFirst?11:9,borderRadius:"50%",background:pl.color,
+            boxShadow:isActive?`0 0 9px ${pl.color}`:isFirst?`0 0 4px ${pl.color}88`:"none",
+            outline:isFirst?`2px solid ${pl.color}44`:"none",outlineOffset:"2px",
+            transition:"box-shadow 0.35s",flexShrink:0,
+          }}/>
+          <span style={{color:isActive?pl.color:"#9A8A74",fontFamily:"'Lora','Georgia',serif",fontSize:"12px",fontWeight:isActive?"700":"400",letterSpacing:"0.1em",textTransform:"uppercase",transition:"color 0.3s",whiteSpace:"nowrap"}}>{pl.name}</span>
+        </div>
+        {isActive&&card&&<HandCard value={card} playerId={pl.id} size={58}/>}
+      </div>
+    );
+    if (!pl.isV) return <div style={{gridArea:pl.area,transform:pl.rot===180?"rotate(180deg)":"none",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>{inner}</div>;
+    return (
+      <div style={{gridArea:pl.area,overflow:"hidden",position:"relative"}}>
+        <div style={{position:"absolute",top:"50%",left:"50%",width:`calc(100vh - ${STRIP*2}px)`,height:`${STRIP}px`,transform:`translate(-50%,-50%) rotate(${pl.rot}deg)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {inner}
+        </div>
+      </div>
+    );
+  }
+
+  function WinOverlay({ winner, msg, onNew }) {
+    const pl=PL.find(p=>p.id===winner);
+    return (
+      <div style={{position:"absolute",inset:0,background:"rgba(252,248,242,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"18px",borderRadius:"12px",zIndex:30,backdropFilter:"blur(4px)"}}>
+        {pl&&<div style={{display:"flex",gap:"8px",alignItems:"flex-end"}}>{[3,6,9,5,7].map((v,i)=><div key={i} style={{transform:`rotate(${(i-2)*7}deg)`,marginBottom:Math.abs(i-2)*7+"px"}}><HandCard value={v} playerId={pl.id} size={56}/></div>)}</div>}
+        <div style={{fontFamily:"'Lora','Georgia',serif",fontSize:"clamp(24px,5vmin,48px)",fontWeight:"700",color:pl?pl.color:"#333",letterSpacing:"0.06em",textAlign:"center"}}>{msg}</div>
+        <button onClick={onNew} style={{background:pl?pl.color:"#555",color:"#fff",border:"none",borderRadius:"8px",padding:"12px 40px",fontFamily:"'Lora','Georgia',serif",fontWeight:"700",fontSize:"15px",cursor:"pointer",letterSpacing:"0.12em",boxShadow:`0 4px 18px ${pl?pl.color+"66":"#33333344"}`}}>NEW GAME</button>
+      </div>
+    );
+  }
+
+  // ── WORLD-COORDINATE GAME LOGIC ──────────────────────────────────────────────
+  //
+  // cards      = { "wr,wc": {player, value} }   — world-coordinate backing store
+  // viewOffset = {r, c}                          — top-left world coord of DISPLAY×DISPLAY window
+  //
+  // The bounding box of all placed cards is limited to G×G (= 6×6).
+  // The DISPLAY (8×8) window is always re-centred on the bounding box,
+  // guaranteeing ≥1 buffer cell on every side so all adjacent placements
+  // are always visible and tappable.
+
+  function getBounds(cards) {
+    const keys=Object.keys(cards);
+    if (!keys.length) return null;
+    const rows=keys.map(k=>+k.split(',')[0]), cols=keys.map(k=>+k.split(',')[1]);
+    return { minR:Math.min(...rows), maxR:Math.max(...rows), minC:Math.min(...cols), maxC:Math.max(...cols) };
+  }
+
+  function canDropWorld(cards, wr, wc, v) {
+    const existing=cards[`${wr},${wc}`];
+    if (existing) return existing.value < v;   // cover a lower card
+    const b=getBounds(cards);
+    if (!b) return true;                        // first card: anywhere
+    // New position must keep bounding box ≤ G×G
+    if (Math.max(b.maxR,wr)-Math.min(b.minR,wr)+1 > G) return false;
+    if (Math.max(b.maxC,wc)-Math.min(b.minC,wc)+1 > G) return false;
+    // Must be orthogonally or diagonally adjacent to an existing card
+    for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+      if (!dr&&!dc) continue;
+      if (cards[`${wr+dr},${wc+dc}`]) return true;
+    }
+    return false;
+  }
+
+  function hasMovesWorld(cards, v) {
+    const b=getBounds(cards);
+    if (!b) return true;
+    // Can cover an existing card?
+    for (const val of Object.values(cards)) if (val.value < v) return true;
+    // Can place in an adjacent empty cell within G×G?
+    for (const key of Object.keys(cards)) {
+      const [r,c]=key.split(',').map(Number);
+      for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+        if (!dr&&!dc) continue;
+        const nr=r+dr, nc=c+dc;
+        if (cards[`${nr},${nc}`]) continue;
+        if (Math.max(b.maxR,nr)-Math.min(b.minR,nr)+1 > G) continue;
+        if (Math.max(b.maxC,nc)-Math.min(b.minC,nc)+1 > G) continue;
+        return true;
       }
-      return null;
+    }
+    return false;
+  }
+
+  // Re-centre the DISPLAY×DISPLAY window on the current bounding box.
+  // With DISPLAY=8 and G=6: there is always at least BUFFER=1 empty cell
+  // visible around every edge of the play area, so expansion is always reachable.
+  function computeViewOffset(cards, current) {
+    const b=getBounds(cards);
+    if (!b) return current;
+    const padR=Math.floor((DISPLAY-(b.maxR-b.minR+1))/2);
+    const padC=Math.floor((DISPLAY-(b.maxC-b.minC+1))/2);
+    return { r:b.minR-padR, c:b.minC-padC };
+  }
+
+  function checkWinWorld(cards) {
+    for (const pid of [1,2,3,4]) {
+      const pts=Object.keys(cards).filter(k=>cards[k].player===pid).map(k=>({r:+k.split(',')[0],c:+k.split(',')[1]}));
+      if (pts.length<WIN) continue;
+      for (const {r,c} of pts) {
+        for (const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]) {
+          const line=[];
+          for (let i=0;i<WIN;i++) {
+            if (cards[`${r+i*dr},${c+i*dc}`]?.player===pid) line.push(`${r+i*dr},${c+i*dc}`);
+            else break;
+          }
+          if (line.length===WIN) return {pid, cells:new Set(line)};
+        }
+      }
+    }
+    return null;
+  }
+
+  function countCardsWorld(cards) {
+    const m={}; PL.forEach(p=>m[p.id]=0);
+    for (const v of Object.values(cards)) m[v.player]++;
+    return m;
+  }
+
+  const shuf=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}return b;};
+  const mkDeck=()=>shuf([1,2,3,4,5,6,7,8,9]);
+
+  // Initial viewOffset: world (0,0) lands at display centre (≈3,3)
+  const INIT_VO = { r:-(Math.floor(DISPLAY/2)), c:-(Math.floor(DISPLAY/2)) };
+
+  function initState(firstPlayerIdx=0) {
+    return {
+      cards:{}, viewOffset:{...INIT_VO},
+      decks:PL.map(()=>mkDeck()), pos:[0,0,0,0],
+      turn:firstPlayerIdx, firstPlayer:firstPlayerIdx,
+      phase:"place", winner:null, winCells:null, msg:"", history:[],
     };
+  }
 
-    // ── Palette ──────────────────────────────────────────────────────────────
-    const C = {
-      appBg:       'radial-gradient(ellipse at 40% 30%, #F5EFE3 0%, #EDE3D0 55%, #E2D5BE 100%)',
-      boardBg:     'linear-gradient(150deg, #4A2E0A 0%, #3A2208 45%, #4A2E0A 100%)',
-      boardBorder: '#2A1404',
-      cell:        '#C8A878',
-      cellWin:     'rgba(176,120,48,0.38)',
-      cellWinBorder: '#B0783088',
-      cellBorder:  'rgba(140,110,70,0.2)',
-      amber:       '#B07830',
-      amberLight:  '#D4A050',
-      ink:         '#3A2810',
-      inkMid:      '#6B4F32',
-      inkLight:    '#9E7D5A',
-      pieceLight:  '#EDD9A3',
-      pieceLightEdge: '#C4A35A',
-      pieceDark:   '#3A2010',
-    };
+  // ── APP ──────────────────────────────────────────────────────────────────────
+  function Punto() {
+    const [S,setS]=useState(initState);
+    const getCard=(s,i)=>s.decks[i][s.pos[i]%9];
 
-    // ── Piece SVG ────────────────────────────────────────────────────────────
-    const Piece = ({ piece, size = 44, muted = false }) => {
-      const { tall, light, square, hollow } = piece;
-      const dim  = tall ? size * 0.80 : size * 0.50;
-      const cx   = size / 2;
-      const fill = light ? C.pieceLight : C.pieceDark;
-      const edge = light ? C.pieceLightEdge : '#1E0E04';
-      const sw   = hollow ? Math.max(dim * 0.165, 2.5) : (light ? 1.5 : 0.5);
+    // Counter-clockwise: index advances 0→1→2→3→0
+    const advance=useCallback((s,from)=>{
+      let next=(from+1)%4, iter=0;
+      while (iter<4) { if(hasMovesWorld(s.cards,getCard(s,next))) break; next=(next+1)%4; iter++; }
+      if (iter>=4) {
+        const cnt=countCardsWorld(s.cards), max=Math.max(...Object.values(cnt));
+        const ws=PL.filter(p=>cnt[p.id]===max);
+        return {...s,phase:"gameover",winner:ws[0].id,msg:ws.length>1?`${ws.map(w=>w.name).join(" & ")} tie!`:`${ws[0].name} wins!`};
+      }
+      return {...s,turn:next,phase:"place",msg:""};
+    },[]);
 
-      return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
-          style={{ opacity: muted ? 0.2 : 1, transition: 'opacity 0.2s', display: 'block' }}>
-          {square ? (
-            <rect x={cx-dim/2} y={cx-dim/2} width={dim} height={dim} rx={dim*0.09}
-              fill={hollow ? 'transparent' : fill}
-              stroke={hollow ? fill : edge}
-              strokeWidth={sw} />
-          ) : (
-            <circle cx={cx} cy={cx} r={dim/2}
-              fill={hollow ? 'transparent' : fill}
-              stroke={hollow ? fill : edge}
-              strokeWidth={sw} />
-          )}
-        </svg>
-      );
-    };
-
-    const pieceLabel = ({ tall, light, square, hollow }) =>
-      [tall?'Tall':'Short', light?'Light':'Dark',
-       square?'Square':'Round', hollow?'Hollow':'Solid'].join(' · ');
-
-    // ── Sound ────────────────────────────────────────────────────────────────
-    const playSlam = () => {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const oscGain = ctx.createGain();
-      osc.connect(oscGain); oscGain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(140, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.12);
-      oscGain.gain.setValueAtTime(1.0, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.22);
-
-      const osc2 = ctx.createOscillator();
-      const osc2Gain = ctx.createGain();
-      osc2.connect(osc2Gain); osc2Gain.connect(ctx.destination);
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(80, ctx.currentTime);
-      osc2.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.18);
-      osc2Gain.gain.setValueAtTime(0.7, ctx.currentTime);
-      osc2Gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-      osc2.start(ctx.currentTime); osc2.stop(ctx.currentTime + 0.25);
-
-      const bufferSize = Math.floor(ctx.sampleRate * 0.08);
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++)
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass'; filter.frequency.value = 400;
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.setValueAtTime(1.4, ctx.currentTime);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-      noise.connect(filter); filter.connect(noiseGain); noiseGain.connect(ctx.destination);
-      noise.start(ctx.currentTime); noise.stop(ctx.currentTime + 0.08);
-    };
-
-    // ── State ─────────────────────────────────────────────────────────────────
-    const initState = () => ({
-      board:         Array(4).fill(null).map(() => Array(4).fill(null)),
-      available:     [...ALL_PIECES],
-      activePiece:   null,
-      selectedPiece: null,
-      phase:         'select',
-      currentPlayer: 1,
-      winLine:       null,
-      winner:        null,
-      isDraw:        false,
-    });
-
-    // ── App ───────────────────────────────────────────────────────────────────
-    function QuartoGame() {
-      const [gs, setGs] = useState(initState());
-      const [cellSize, setCellSize] = useState(80);
-
-      useEffect(() => {
-        const calc = () => {
-          // Board needs: 4 cells + 3 gaps(4px) + 2 padding(14px) + 2 border(2px)
-          // Panels need roughly 2.2 and 2.0 cell-widths + gaps
-          // Total horiz: leftPanel + gap + board + gap + rightPanel
-          //            = 2.2*c + 20 + (4c+56) + 20 + 2.0*c = 8.2c + 96
-          // Total vert:  board height = 4c + 56, want that <= vh - 40
-          const maxFromHeight = (window.innerHeight - 60) / 4.4;
-          const maxFromWidth  = (window.innerWidth  - 96) / 8.4;
-          const size = Math.floor(Math.min(maxFromHeight, maxFromWidth));
-          setCellSize(Math.max(60, size));
-        };
-        calc();
-        window.addEventListener('resize', calc);
-        return () => window.removeEventListener('resize', calc);
-      }, []);
-
-      const C_SIZE = cellSize;
-      const leftW  = Math.round(cellSize * 2.15);
-      const rightW = Math.round(cellSize * 1.95);
-      const trayItem = Math.round(cellSize * 0.42);
-      const pieceMain = Math.round(cellSize * 0.68);
-      const pieceActive = Math.round(cellSize * 0.72);
-      const pieceTray = Math.round(cellSize * 0.33);
-      const { board, available, activePiece, selectedPiece,
-              phase, currentPlayer, winLine, winner, isDraw } = gs;
-
-      const placedIds = new Set(board.flatMap(r => r.filter(Boolean).map(p => p.id)));
-      const isAvail   = (p) => available.some(a => a.id === p.id);
-      const isWinCell = (r, c) => winLine?.some(([wr,wc]) => wr===r && wc===c);
-      const gameOver  = !!(winLine || isDraw);
-
-      const selectPiece = (piece) => {
-        if (phase !== 'select' || gameOver || !isAvail(piece)) return;
-        setGs(prev => ({ ...prev,
-          selectedPiece: prev.selectedPiece?.id === piece.id ? null : piece }));
-      };
-
-      const confirmGive = () => {
-        if (!selectedPiece) return;
-        playSlam();
-        setGs(prev => ({
-          ...prev,
-          available:     prev.available.filter(p => p.id !== prev.selectedPiece.id),
-          activePiece:   prev.selectedPiece,
-          selectedPiece: null,
-          phase:         'place',
-          currentPlayer: prev.currentPlayer === 1 ? 2 : 1,
-        }));
-      };
-
-      const placeOnBoard = (r, c) => {
-        if (phase !== 'place' || gameOver || !activePiece || board[r][c]) return;
-        const newBoard = board.map(row => [...row]);
-        newBoard[r][c] = activePiece;
-        const win = checkWin(newBoard);
+    const handleCell=useCallback((r,c)=>{
+      setS(s=>{
+        if (s.phase!=="place") return s;
+        const card=getCard(s,s.turn);
+        const wr=s.viewOffset.r+r, wc=s.viewOffset.c+c;
+        if (!canDropWorld(s.cards,wr,wc,card)) return s;
+        // snapshot for undo
+        const snap={cards:{...s.cards},viewOffset:{...s.viewOffset},decks:s.decks.map(d=>[...d]),pos:[...s.pos],turn:s.turn,firstPlayer:s.firstPlayer,phase:s.phase,winner:s.winner,winCells:s.winCells,msg:s.msg,history:s.history};
+        const history=[...s.history.slice(-4),snap];
+        const pid=PL[s.turn].id;
+        const newCards={...s.cards,[`${wr},${wc}`]:{player:pid,value:card}};
+        const newVO=computeViewOffset(newCards,s.viewOffset);
+        const np=[...s.pos]; np[s.turn]=(np[s.turn]+1)%9;
+        const nd=[...s.decks]; if(np[s.turn]===0) nd[s.turn]=mkDeck();
+        const win=checkWinWorld(newCards);
         if (win) {
-          setGs(prev => ({ ...prev, board: newBoard, activePiece: null,
-            winLine: win, winner: prev.currentPlayer }));
-          return;
+          const wp=PL.find(p=>p.id===win.pid);
+          return {...s,history,cards:newCards,viewOffset:newVO,decks:nd,pos:np,phase:"gameover",winner:win.pid,winCells:win.cells,msg:`${wp.name} wins!`};
         }
-        if (available.length === 0) {
-          setGs(prev => ({ ...prev, board: newBoard, activePiece: null, isDraw: true }));
-          return;
-        }
-        setGs(prev => ({ ...prev, board: newBoard, activePiece: null, phase: 'select' }));
-      };
+        return advance({...s,history,cards:newCards,viewOffset:newVO,decks:nd,pos:np,winCells:null},s.turn);
+      });
+    },[advance]);
 
-      const reset = () => setGs(initState());
+    const handleUndo=useCallback(()=>{
+      setS(s=>(!s.history||!s.history.length)?s:s.history[s.history.length-1]);
+    },[]);
 
-      return (
-        <div style={{
-          minHeight: '100vh', background: C.appBg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: "'Georgia', 'Times New Roman', serif",
-          padding: '16px', boxSizing: 'border-box',
-          position: 'relative', overflow: 'hidden',
-        }}>
-          {/* Linen texture */}
+    // New game: rotate first player to next counter-clockwise
+    const handleNewGame=useCallback(()=>{ setS(s=>initState((s.firstPlayer+1)%4)); },[]);
+    // Restart: same first player
+    const handleRestart=useCallback(()=>{ setS(s=>initState(s.firstPlayer)); },[]);
+
+    const s=S, cp=PL[s.turn], curCard=getCard(s,s.turn);
+    const mustSkip=s.phase==="place"&&!hasMovesWorld(s.cards,curCard);
+    const noCards=Object.keys(s.cards).length===0;
+
+    useEffect(()=>{
+      if (!mustSkip||s.phase!=="place") return;
+      const t=setTimeout(()=>{
+        setS(prev=>{
+          if (prev.phase!=="place") return prev;
+          if (hasMovesWorld(prev.cards,getCard(prev,prev.turn))) return prev;
+          const np=[...prev.pos]; np[prev.turn]=(np[prev.turn]+1)%9;
+          const nd=[...prev.decks]; if(np[prev.turn]===0) nd[prev.turn]=mkDeck();
+          return advance({...prev,decks:nd,pos:np},prev.turn);
+        });
+      },1500);
+      return()=>clearTimeout(t);
+    },[mustSkip,s.turn,s.phase,advance]);
+
+    // Build DISPLAY×DISPLAY board from world coords
+    const displayBoard=Array.from({length:DISPLAY},(_,r)=>
+      Array.from({length:DISPLAY},(_,c)=>s.cards[`${s.viewOffset.r+r},${s.viewOffset.c+c}`]||null)
+    );
+
+    // Valid placement set (display coords)
+    const validSet=new Set();
+    if (s.phase==="place") {
+      for (let r=0;r<DISPLAY;r++) for (let c=0;c<DISPLAY;c++) {
+        const wr=s.viewOffset.r+r, wc=s.viewOffset.c+c;
+        let ok=canDropWorld(s.cards,wr,wc,curCard);
+        // First card: restrict to inner G×G area so outer ring doesn't show dots
+        if (ok&&noCards&&(r<BUFFER||r>=DISPLAY-BUFFER||c<BUFFER||c>=DISPLAY-BUFFER)) ok=false;
+        if (ok) validSet.add(`${r},${c}`);
+      }
+    }
+
+    // Is this display cell in the outer buffer ring?
+    const isBufferCell=(r,c)=>(r<BUFFER||r>=DISPLAY-BUFFER||c<BUFFER||c>=DISPLAY-BUFFER);
+
+    const winnerPl=s.winner?PL.find(p=>p.id===s.winner):null;
+    const boardSize=`min(calc(100vw - ${STRIP*2+8}px), calc(100vh - ${STRIP*2+46}px))`;
+
+    const cornerBtn=(label,icon,onClick,disabled=false)=>(
+      <button onClick={onClick} disabled={disabled} style={{background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",cursor:disabled?"default":"pointer",opacity:disabled?0.18:0.42,transition:"opacity 0.2s",padding:"8px"}}>
+        <span style={{fontSize:"18px",lineHeight:1,color:"#6B5B45"}}>{icon}</span>
+        <span style={{fontFamily:"'Lora','Georgia',serif",fontSize:"9px",color:"#6B5B45",letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</span>
+      </button>
+    );
+
+    return (
+      <div style={{
+        position:"fixed",inset:0,
+        background:"#F4EEE0",
+        backgroundImage:"radial-gradient(#D4C4A8 0.7px,transparent 0.7px)",
+        backgroundSize:"14px 14px",
+        display:"grid",
+        gridTemplateAreas:`"tl p3 tr" "p4 board p2" "bl p1 br"`,
+        gridTemplateColumns:`${STRIP}px 1fr ${STRIP}px`,
+        gridTemplateRows:`${STRIP}px 1fr ${STRIP}px`,
+        overflow:"hidden",
+      }}>
+        <div style={{gridArea:"tl"}}/><div style={{gridArea:"tr"}}/>
+        <div style={{gridArea:"bl",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {s.phase!=="gameover"&&cornerBtn("fix","↩",handleUndo,!s.history||!s.history.length)}
+        </div>
+        <div style={{gridArea:"br",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {s.phase!=="gameover"&&cornerBtn("restart","↺",handleRestart)}
+        </div>
+
+        {PL.map((pl,i)=>(
+          <Strip key={pl.id} pl={pl} card={getCard(s,i)}
+            isActive={s.turn===i&&s.phase!=="gameover"} isFirst={s.firstPlayer===i}/>
+        ))}
+
+        <div style={{gridArea:"board",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"6px",padding:"4px"}}>
+          <div style={{color:s.phase==="gameover"?(winnerPl?.color||"#555"):cp.color,fontFamily:"'Lora','Georgia',serif",fontSize:"clamp(10px,1.4vmin,14px)",fontWeight:"700",letterSpacing:"0.09em",textAlign:"center",height:"18px",lineHeight:"18px",flexShrink:0}}>
+            {s.phase==="gameover"?s.msg:mustSkip?`${cp.name} — no valid move, skipping…`:`${cp.name}'s turn`}
+          </div>
           <div style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.6,
-            backgroundImage: `
-              repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(180,150,100,0.04) 3px, rgba(180,150,100,0.04) 4px),
-              repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(180,150,100,0.03) 3px, rgba(180,150,100,0.03) 4px)
-            `,
-          }} />
-
-          <div style={{
-            display: 'flex', gap: '20px', alignItems: 'center',
-            width: '100%', position: 'relative', zIndex: 1,
-            justifyContent: 'center',
+            display:"grid",
+            gridTemplateColumns:`repeat(${DISPLAY},1fr)`,
+            gap:"4px",
+            background:"#E4D7C4",
+            padding:"8px",
+            borderRadius:"14px",
+            width:boardSize,
+            aspectRatio:"1/1",
+            boxShadow:"0 4px 28px rgba(0,0,0,0.14),0 1px 0 rgba(255,255,255,0.75),inset 0 1px 4px rgba(0,0,0,0.08)",
+            border:"1px solid #CCBDA0",
+            position:"relative",flexShrink:0,
           }}>
-
-            {/* ── Left Panel ───────────────────────────────────────────────── */}
-            <div style={{ width: leftW, flexShrink: 0,
-              display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-              <div>
-                <h1 style={{ margin: 0, fontSize: '32px', letterSpacing: '7px',
-                  color: C.amber, fontWeight: 700,
-                  textShadow: `0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(176,120,48,0.2)` }}>
-                  QUARTO
-                </h1>
-                <p style={{ margin: '3px 0 0', color: C.inkLight, fontSize: '9px',
-                  letterSpacing: '2.5px', textTransform: 'uppercase' }}>
-                  Abstract Strategy
-                </p>
-              </div>
-
-              {!gameOver ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{
-                    display: 'inline-block', padding: '6px 12px', borderRadius: '5px',
-                    background: currentPlayer === 1
-                      ? 'linear-gradient(135deg, #C8A878, #B09060)'
-                      : 'linear-gradient(135deg, #8C6840, #705030)',
-                    boxShadow: '0 2px 6px rgba(100,70,30,0.2)',
-                    color: '#FFF8EE', fontSize: '12px', letterSpacing: '2px',
-                    textTransform: 'uppercase', fontWeight: 'bold',
-                  }}>
-                    Player {currentPlayer}
-                  </div>
-                  <p style={{ margin: 0, color: C.inkMid, fontSize: '13px', lineHeight: 1.65 }}>
-                    {phase === 'select'
-                      ? <span>Tap a piece to give<br />to your opponent.</span>
-                      : <span>Place the piece<br />on the board.</span>}
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <p style={{ margin: 0, color: C.amber, fontSize: '22px',
-                    fontWeight: 'bold', lineHeight: 1.3 }}>
-                    {isDraw ? 'Draw!' : `Player ${winner} Wins!`}
-                  </p>
-                  <button onClick={reset} style={{
-                    background: 'transparent', border: `1.5px solid ${C.amber}`,
-                    color: C.amber, padding: '9px 14px', borderRadius: '6px',
-                    cursor: 'pointer', fontSize: '11px', letterSpacing: '2px',
-                    fontFamily: 'Georgia, serif', textTransform: 'uppercase',
-                  }}>New Game</button>
-                </div>
-              )}
-
-              {activePiece && phase === 'place' && (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
-                  padding: '12px 8px', borderRadius: '8px',
-                  background: 'rgba(255,255,255,0.6)', border: `1px solid ${C.amber}55`,
-                  boxShadow: '0 2px 10px rgba(176,120,48,0.12)',
-                }}>
-                  <p style={{ margin: 0, color: C.amber, fontSize: '9px',
-                    letterSpacing: '2px', textTransform: 'uppercase' }}>Must Place</p>
-                  <Piece piece={activePiece} size={pieceActive} />
-                  <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
-                    textAlign: 'center', lineHeight: 1.4 }}>{pieceLabel(activePiece)}</p>
-                </div>
-              )}
-
-              {phase === 'select' && selectedPiece && !gameOver && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                    padding: '8px', borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.6)', border: `1px dashed ${C.amber}66`,
-                  }}>
-                    <Piece piece={selectedPiece} size={pieceActive} />
-                    <p style={{ margin: 0, color: C.inkLight, fontSize: '9px', textAlign: 'center' }}>
-                      {pieceLabel(selectedPiece)}
-                    </p>
-                  </div>
-                  <button onClick={confirmGive} style={{
-                    background: `linear-gradient(135deg, ${C.amberLight}, ${C.amber})`,
-                    color: '#FFF8EE', border: 'none',
-                    padding: '10px 0', borderRadius: '6px', cursor: 'pointer',
-                    fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px',
-                    fontFamily: 'Georgia, serif', width: '100%',
-                    boxShadow: '0 3px 10px rgba(176,120,48,0.3)',
-                  }}>Give to Opponent →</button>
-                </div>
-              )}
-
-              <div style={{ marginTop: 'auto', paddingTop: '10px',
-                borderTop: `1px solid rgba(140,110,70,0.2)` }}>
-                <p style={{ margin: '0 0 5px', color: C.inkLight, fontSize: '8.5px',
-                  letterSpacing: '1.5px', textTransform: 'uppercase' }}>Attributes</p>
-                {[['Size','Tall · Short'],['Color','Light · Dark'],
-                  ['Shape','Square · Round'],['Fill','Hollow · Solid']].map(([k,v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                    <span style={{ color: C.inkLight, fontSize: '9px' }}>{k}</span>
-                    <span style={{ color: C.amber, fontSize: '9px' }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Board ────────────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(4, ${C_SIZE}px)`,
-                gridTemplateRows: `repeat(4, ${C_SIZE}px)`,
-                gap: '4px', padding: '14px',
-                background: C.boardBg, borderRadius: '10px',
-                border: `2px solid ${C.boardBorder}`,
-                boxShadow: '0 8px 32px rgba(100,70,30,0.22), 0 2px 0 rgba(255,255,255,0.7), inset 0 1px 0 rgba(255,255,255,0.5)',
-              }}>
-                {board.map((row, r) => row.map((cell, c) => {
-                  const isWin   = isWinCell(r, c);
-                  const canDrop = phase === 'place' && !cell && !gameOver && activePiece;
-                  return (
-                    <div key={`${r}-${c}`} onClick={() => placeOnBoard(r, c)}
-                      title={cell ? pieceLabel(cell) : ''}
-                      style={{
-                        width: C_SIZE, height: C_SIZE, borderRadius: '5px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: isWin ? C.cellWin : C.cell,
-                        border: `1px solid ${isWin ? C.cellWinBorder : C.cellBorder}`,
-                        cursor: canDrop ? 'pointer' : 'default',
-                        boxShadow: isWin
-                          ? `inset 0 0 16px rgba(176,120,48,0.3), 0 0 8px rgba(176,120,48,0.15)`
-                          : 'inset 0 1px 0 rgba(255,255,255,0.4)',
-                        transition: 'background 0.18s, box-shadow 0.18s',
-                      }}>
-                      {cell && <Piece piece={cell} size={pieceMain} />}
-                      {!cell && canDrop && (
-                        <div style={{
-                          width: Math.round(C_SIZE * 0.3), height: Math.round(C_SIZE * 0.3),
-                          borderRadius: '50%',
-                          border: `2px dashed rgba(176,120,48,0.4)`,
-                          animation: 'pulse 1.8s ease-in-out infinite',
-                        }} />
-                      )}
-                    </div>
-                  );
-                }))}
-              </div>
-            </div>
-
-            {/* ── Piece Tray ───────────────────────────────────────────────── */}
-            <div style={{ width: rightW, flexShrink: 0,
-              display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <p style={{ margin: 0, color: C.inkLight, fontSize: '9px',
-                letterSpacing: '2px', textTransform: 'uppercase' }}>
-                {available.length} of 16 left
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
-                {ALL_PIECES.map(piece => {
-                  const avail    = isAvail(piece);
-                  const placed   = placedIds.has(piece.id);
-                  const isActive = activePiece?.id === piece.id;
-                  const isSel    = selectedPiece?.id === piece.id;
-                  const muted    = placed || isActive;
-                  const clickable = avail && phase === 'select' && !gameOver;
-                  return (
-                    <div key={piece.id} onClick={() => clickable && selectPiece(piece)}
-                      title={pieceLabel(piece)}
-                      style={{
-                        width: trayItem, height: trayItem, borderRadius: '5px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        position: 'relative',
-                        background: isSel ? `rgba(176,120,48,0.15)` : 'rgba(255,255,255,0.5)',
-                        border: `1.5px solid ${isSel ? C.amber : 'rgba(140,110,70,0.2)'}`,
-                        cursor: clickable ? 'pointer' : 'default',
-                        transform: isSel ? 'scale(1.12)' : 'scale(1)',
-                        transition: 'all 0.12s ease',
-                        boxShadow: isSel ? `0 0 8px rgba(176,120,48,0.35)` : '0 1px 2px rgba(100,70,30,0.08)',
-                      }}>
-                      <Piece piece={piece} size={pieceTray} muted={muted} />
-                      {muted && (
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none"
-                          style={{ position: 'absolute', inset: 4, width: 'calc(100% - 8px)', height: 'calc(100% - 8px)', pointerEvents: 'none' }}>
-                          <line x1="0" y1="0" x2="100" y2="100" stroke="rgba(180,30,30,0.75)" strokeWidth="10" strokeLinecap="round" />
-                          <line x1="100" y1="0" x2="0" y2="100" stroke="rgba(180,30,30,0.75)" strokeWidth="10" strokeLinecap="round" />
-                        </svg>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div style={{ marginTop: '10px', paddingTop: '10px',
-                borderTop: `1px solid rgba(140,110,70,0.2)` }}>
-                <p style={{ margin: '0 0 6px', color: C.inkLight, fontSize: '8px', lineHeight: 1.5 }}>
-                  4 in a row, col, or diagonal sharing any attribute wins.
-                </p>
-              </div>
-            </div>
-
+            {displayBoard.map((row,r)=>row.map((cell,c)=>{
+              const k=`${r},${c}`;
+              const wk=`${s.viewOffset.r+r},${s.viewOffset.c+c}`;
+              return (
+                <Cell key={k} cell={cell}
+                  valid={validSet.has(k)}
+                  win={!!(s.winCells&&s.winCells.has(wk))}
+                  buffer={isBufferCell(r,c)&&!cell}
+                  activeColor={cp.color}
+                  onClick={()=>handleCell(r,c)}
+                />
+              );
+            }))}
+            {s.phase==="gameover"&&<WinOverlay winner={s.winner} msg={s.msg} onNew={handleNewGame}/>}
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<QuartoGame />);
-  </script>
-
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .catch(err => console.log('SW error:', err));
-      });
-    }
-  </script>
+  ReactDOM.createRoot(document.getElementById("root")).render(<Punto/>);
+</script>
 </body>
 </html>

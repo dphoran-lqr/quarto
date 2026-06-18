@@ -1,13 +1,19 @@
 {
-  "name": "Quarto",
-  "short_name": "Quarto",
-  "description": "Two-player abstract strategy board game",
-  "start_url": ".",
+  "name": "Punto",
+  "short_name": "Punto",
+  "description": "4-player Punto card game — pass and play",
+  "start_url": "./index.html",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#2A1205",
-  "theme_color": "#3A2208",
+  "background_color": "#F4EEE0",
+  "theme_color": "#F4EEE0",
   "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "icon-192.png",
       "sizes": "192x192",
