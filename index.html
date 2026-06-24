@@ -12,31 +12,28 @@
   <title>Quarto</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+    html, body, #root { width: 100%; height: 100%; }
     body { background: #2A1205; }
     @keyframes pulse {
       0%, 100% { opacity: 0.35; transform: scale(1); }
       50%       { opacity: 0.75; transform: scale(1.15); }
     }
-    button:hover { opacity: 0.88; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
 
-  <script type="text/babel">
+  <script type="text/babel" data-presets="react">
     const { useState, useEffect } = React;
 
-    // ── 16 pieces: 4 binary attributes ──────────────────────────────────────
-    const ALL_PIECES = Array.from({ length: 16 }, (_, i) => ({
-      id: i, tall: !!(i&8), light: !!(i&4), square: !!(i&2), hollow: !!(i&1),
-    }));
+    const ALL_PIECES = Array.from({ length: 16 }, function(_, i) {
+      return { id: i, tall: !!(i&8), light: !!(i&4), square: !!(i&2), hollow: !!(i&1) };
+    });
 
-    // ── Win detection ────────────────────────────────────────────────────────
     const WIN_LINES = [
       [[0,0],[0,1],[0,2],[0,3]], [[1,0],[1,1],[1,2],[1,3]],
       [[2,0],[2,1],[2,2],[2,3]], [[3,0],[3,1],[3,2],[3,3]],
@@ -44,178 +41,193 @@
       [[0,2],[1,2],[2,2],[3,2]], [[0,3],[1,3],[2,3],[3,3]],
       [[0,0],[1,1],[2,2],[3,3]], [[0,3],[1,2],[2,1],[3,0]],
     ];
-    const sharesAttr = (pieces) => {
-      if (pieces.some(p => !p)) return false;
-      return ['tall','light','square','hollow'].some(
-        a => pieces.every(p => p[a]) || pieces.every(p => !p[a])
-      );
-    };
-    const checkWin = (board) => {
-      for (const line of WIN_LINES)
-        if (sharesAttr(line.map(([r,c]) => board[r][c]))) return line;
+
+    function sharesAttr(pieces) {
+      if (pieces.some(function(p) { return !p; })) return false;
+      return ['tall','light','square','hollow'].some(function(a) {
+        return pieces.every(function(p) { return p[a]; }) ||
+               pieces.every(function(p) { return !p[a]; });
+      });
+    }
+
+    function checkWin(board) {
+      for (var i = 0; i < WIN_LINES.length; i++) {
+        var line = WIN_LINES[i];
+        var pieces = line.map(function(rc) { return board[rc[0]][rc[1]]; });
+        if (sharesAttr(pieces)) return line;
+      }
       return null;
-    };
+    }
 
-    // ── Colours ──────────────────────────────────────────────────────────────
-    const BG      = 'radial-gradient(ellipse at 40% 30%, #F5EFE3 0%, #EDE3D0 55%, #E2D5BE 100%)';
-    const BOARD   = 'linear-gradient(150deg, #4A2E0A 0%, #3A2208 45%, #4A2E0A 100%)';
-    const AMBER   = '#B07830';
-    const AMBER_L = '#D4A050';
-    const INK     = '#6B4F32';
-    const INK_L   = '#9E7D5A';
-    const CELL    = '#C8A878';
-    const CELL_WIN= 'rgba(176,120,48,0.38)';
-
-    // ── Piece renderer ───────────────────────────────────────────────────────
-    function Piece({ piece, size, muted }) {
-      const { tall, light, square, hollow } = piece;
-      const dim  = tall ? size * 0.80 : size * 0.50;
-      const cx   = size / 2;
-      const fill = light ? '#EDD9A3' : '#3A2010';
-      const edge = light ? '#C4A35A' : '#1E0E04';
-      const sw   = hollow ? Math.max(dim * 0.165, 2.5) : (light ? 1.5 : 0.5);
+    function Piece(props) {
+      var piece = props.piece;
+      var size = props.size || 44;
+      var muted = props.muted || false;
+      var tall = piece.tall, light = piece.light, square = piece.square, hollow = piece.hollow;
+      var dim  = tall ? size * 0.80 : size * 0.50;
+      var cx   = size / 2;
+      var fill = light ? '#EDD9A3' : '#3A2010';
+      var edge = light ? '#C4A35A' : '#1E0E04';
+      var sw   = hollow ? Math.max(dim * 0.165, 2.5) : (light ? 1.5 : 0.5);
       return (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+        <svg width={size} height={size} viewBox={"0 0 " + size + " " + size}
           style={{ opacity: muted ? 0.2 : 1, display: 'block', flexShrink: 0 }}>
           {square
             ? <rect x={cx-dim/2} y={cx-dim/2} width={dim} height={dim} rx={dim*0.09}
-                fill={hollow?'transparent':fill} stroke={hollow?fill:edge} strokeWidth={sw} />
+                fill={hollow ? 'transparent' : fill} stroke={hollow ? fill : edge} strokeWidth={sw} />
             : <circle cx={cx} cy={cx} r={dim/2}
-                fill={hollow?'transparent':fill} stroke={hollow?fill:edge} strokeWidth={sw} />
+                fill={hollow ? 'transparent' : fill} stroke={hollow ? fill : edge} strokeWidth={sw} />
           }
         </svg>
       );
     }
 
-    const label = ({tall,light,square,hollow}) =>
-      [tall?'Tall':'Short', light?'Light':'Dark',
-       square?'Square':'Round', hollow?'Hollow':'Solid'].join(' · ');
-
-    // ── Slam sound ───────────────────────────────────────────────────────────
-    function playSlam() {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const go = (type, f0, f1, g0, dur) => {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        o.type = type;
-        o.frequency.setValueAtTime(f0, ctx.currentTime);
-        o.frequency.exponentialRampToValueAtTime(f1, ctx.currentTime + dur);
-        g.gain.setValueAtTime(g0, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-        o.start(); o.stop(ctx.currentTime + dur);
-      };
-      go('sine',     140, 35, 1.0, 0.22);
-      go('triangle',  80, 20, 0.7, 0.25);
-      const n = ctx.sampleRate * 0.08 | 0;
-      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i=0; i<n; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/n, 3);
-      const src = ctx.createBufferSource(); src.buffer = buf;
-      const f = ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=400;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(1.4, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-      src.connect(f); f.connect(g); g.connect(ctx.destination);
-      src.start(); src.stop(ctx.currentTime + 0.08);
+    function pieceLabel(p) {
+      return [(p.tall?'Tall':'Short'),(p.light?'Light':'Dark'),
+              (p.square?'Square':'Round'),(p.hollow?'Hollow':'Solid')].join(' · ');
     }
 
-    // ── Initial state ────────────────────────────────────────────────────────
-    const init = () => ({
-      board:    Array(4).fill(null).map(() => Array(4).fill(null)),
-      avail:    [...ALL_PIECES],
-      active:   null,
-      selected: null,
-      phase:    'select',
-      player:   1,
-      winLine:  null,
-      winner:   null,
-      draw:     false,
-    });
+    function playSlam() {
+      try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var o1 = ctx.createOscillator(), g1 = ctx.createGain();
+        o1.connect(g1); g1.connect(ctx.destination);
+        o1.type = 'sine';
+        o1.frequency.setValueAtTime(140, ctx.currentTime);
+        o1.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.12);
+        g1.gain.setValueAtTime(1.0, ctx.currentTime);
+        g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        o1.start(); o1.stop(ctx.currentTime + 0.22);
+        var o2 = ctx.createOscillator(), g2 = ctx.createGain();
+        o2.connect(g2); g2.connect(ctx.destination);
+        o2.type = 'triangle';
+        o2.frequency.setValueAtTime(80, ctx.currentTime);
+        o2.frequency.exponentialRampToValueAtTime(20, ctx.currentTime + 0.18);
+        g2.gain.setValueAtTime(0.7, ctx.currentTime);
+        g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        o2.start(); o2.stop(ctx.currentTime + 0.25);
+      } catch(e) {}
+    }
 
-    // ── App ──────────────────────────────────────────────────────────────────
+    function makeBoard() {
+      return [[null,null,null,null],[null,null,null,null],
+              [null,null,null,null],[null,null,null,null]];
+    }
+
     function QuartoGame() {
-      const [gs, setGs] = useState(init);
-      const [cell, setCell] = useState(80);
+      var initGs = {
+        board: makeBoard(), avail: ALL_PIECES.slice(),
+        active: null, selected: null, phase: 'select',
+        player: 1, winLine: null, winner: null, draw: false
+      };
+      var stateArr = useState(initGs);
+      var gs = stateArr[0], setGs = stateArr[1];
+      var cellArr = useState(80);
+      var cell = cellArr[0], setCell = cellArr[1];
 
-      // Responsive sizing
-      useEffect(() => {
-        const calc = () => {
-          const c = Math.floor(Math.min(
+      useEffect(function() {
+        function calc() {
+          var c = Math.floor(Math.min(
             (window.innerHeight - 60) / 4.4,
-            (window.innerWidth  - 96) / 8.4
+            (window.innerWidth - 96) / 8.4
           ));
           setCell(Math.max(60, c));
-        };
+        }
         calc();
         window.addEventListener('resize', calc);
-        return () => window.removeEventListener('resize', calc);
+        return function() { window.removeEventListener('resize', calc); };
       }, []);
 
-      const { board, avail, active, selected, phase, player, winLine, winner, draw } = gs;
-      const over     = !!(winLine || draw);
-      const placed   = new Set(board.flatMap(r => r.filter(Boolean).map(p => p.id)));
-      const isAvail  = p => avail.some(a => a.id === p.id);
-      const isWin    = (r,c) => winLine?.some(([wr,wc]) => wr===r && wc===c);
+      var board = gs.board, avail = gs.avail, active = gs.active;
+      var selected = gs.selected, phase = gs.phase, player = gs.player;
+      var winLine = gs.winLine, winner = gs.winner, draw = gs.draw;
+      var over = !!(winLine || draw);
 
-      // Derived sizes
-      const leftW    = Math.round(cell * 2.15);
-      const rightW   = Math.round(cell * 1.95);
-      const trayPx   = Math.round(cell * 0.42);
-      const mainPx   = Math.round(cell * 0.68);
-      const activePx = Math.round(cell * 0.72);
-      const trayPiece= Math.round(cell * 0.33);
+      var placedIds = {};
+      board.forEach(function(row) {
+        row.forEach(function(p) { if (p) placedIds[p.id] = true; });
+      });
 
-      const pick = (piece) => {
+      function isAvail(p) {
+        return avail.some(function(a) { return a.id === p.id; });
+      }
+
+      function isWinCell(r, c) {
+        if (!winLine) return false;
+        return winLine.some(function(rc) { return rc[0]===r && rc[1]===c; });
+      }
+
+      var leftW  = Math.round(cell * 2.15);
+      var rightW = Math.round(cell * 1.95);
+      var trayPx = Math.round(cell * 0.42);
+      var mainPx = Math.round(cell * 0.68);
+      var actPx  = Math.round(cell * 0.72);
+      var trayP  = Math.round(cell * 0.33);
+
+      var AMBER = '#B07830', AMBER_L = '#D4A050';
+      var INK = '#6B4F32', INK_L = '#9E7D5A';
+      var CELL = '#C8A878', CELL_WIN = 'rgba(176,120,48,0.38)';
+      var BG = 'radial-gradient(ellipse at 40% 30%, #F5EFE3 0%, #EDE3D0 55%, #E2D5BE 100%)';
+      var BOARD = 'linear-gradient(150deg, #4A2E0A 0%, #3A2208 45%, #4A2E0A 100%)';
+
+      function pick(piece) {
         if (phase !== 'select' || over || !isAvail(piece)) return;
-        setGs(g => ({...g, selected: g.selected?.id===piece.id ? null : piece}));
-      };
+        setGs(function(g) {
+          var sel = (g.selected && g.selected.id === piece.id) ? null : piece;
+          return Object.assign({}, g, { selected: sel });
+        });
+      }
 
-      const give = () => {
+      function give() {
         if (!selected) return;
         playSlam();
-        setGs(g => ({...g,
-          avail:    g.avail.filter(p => p.id !== g.selected.id),
-          active:   g.selected,
-          selected: null,
-          phase:    'place',
-          player:   g.player===1 ? 2 : 1,
-        }));
-      };
+        setGs(function(g) {
+          return Object.assign({}, g, {
+            avail: g.avail.filter(function(p) { return p.id !== g.selected.id; }),
+            active: g.selected, selected: null, phase: 'place',
+            player: g.player === 1 ? 2 : 1
+          });
+        });
+      }
 
-      const place = (r,c) => {
-        if (phase!=='place' || over || !active || board[r][c]) return;
-        const nb = board.map(row=>[...row]);
+      function place(r, c) {
+        if (phase !== 'place' || over || !active || board[r][c]) return;
+        var nb = board.map(function(row) { return row.slice(); });
         nb[r][c] = active;
-        const win = checkWin(nb);
-        if (win) { setGs(g=>({...g, board:nb, active:null, winLine:win, winner:g.player})); return; }
-        if (avail.length===0) { setGs(g=>({...g, board:nb, active:null, draw:true})); return; }
-        setGs(g=>({...g, board:nb, active:null, phase:'select'}));
-      };
+        var win = checkWin(nb);
+        if (win) {
+          setGs(function(g) {
+            return Object.assign({}, g, { board: nb, active: null, winLine: win, winner: g.player });
+          });
+          return;
+        }
+        if (avail.length === 0) {
+          setGs(function(g) { return Object.assign({}, g, { board: nb, active: null, draw: true }); });
+          return;
+        }
+        setGs(function(g) { return Object.assign({}, g, { board: nb, active: null, phase: 'select' }); });
+      }
 
-      const reset = () => setGs(init());
+      function reset() {
+        setGs({ board: makeBoard(), avail: ALL_PIECES.slice(),
+          active: null, selected: null, phase: 'select',
+          player: 1, winLine: null, winner: null, draw: false });
+      }
 
       return (
         <div style={{minHeight:'100vh', background:BG, display:'flex',
           alignItems:'center', justifyContent:'center',
-          fontFamily:"'Georgia','Times New Roman',serif",
+          fontFamily:"Georgia,'Times New Roman',serif",
           padding:'12px', boxSizing:'border-box', overflow:'hidden'}}>
 
-          {/* linen texture */}
-          <div style={{position:'absolute',inset:0,pointerEvents:'none',opacity:0.5,
-            backgroundImage:`repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(180,150,100,0.04) 3px,rgba(180,150,100,0.04) 4px),
-              repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(180,150,100,0.03) 3px,rgba(180,150,100,0.03) 4px)`}} />
-
           <div style={{display:'flex', gap:'16px', alignItems:'center',
-            justifyContent:'center', width:'100%', position:'relative', zIndex:1}}>
+            justifyContent:'center', width:'100%'}}>
 
-            {/* ── LEFT PANEL ──────────────────────────────────────────────── */}
-            <div style={{width:leftW, flexShrink:0, display:'flex',
-              flexDirection:'column', gap:'12px'}}>
-
+            {/* LEFT PANEL */}
+            <div style={{width:leftW, flexShrink:0, display:'flex', flexDirection:'column', gap:'12px'}}>
               <div>
                 <h1 style={{margin:0, fontSize:'28px', letterSpacing:'6px',
-                  color:AMBER, fontWeight:700,
-                  textShadow:'0 1px 0 rgba(255,255,255,0.8)'}}>QUARTO</h1>
+                  color:AMBER, fontWeight:700}}>QUARTO</h1>
                 <p style={{margin:'2px 0 0', color:INK_L, fontSize:'8px',
                   letterSpacing:'2px', textTransform:'uppercase'}}>Abstract Strategy</p>
               </div>
@@ -223,158 +235,148 @@
               {!over ? (
                 <div style={{display:'flex', flexDirection:'column', gap:'8px'}}>
                   <div style={{padding:'6px 12px', borderRadius:'5px', display:'inline-block',
-                    background: player===1
-                      ? 'linear-gradient(135deg,#C8A878,#B09060)'
-                      : 'linear-gradient(135deg,#8C6840,#705030)',
+                    background: player===1 ? 'linear-gradient(135deg,#C8A878,#B09060)'
+                                           : 'linear-gradient(135deg,#8C6840,#705030)',
                     color:'#FFF8EE', fontSize:'11px', letterSpacing:'2px',
-                    textTransform:'uppercase', fontWeight:'bold',
-                    boxShadow:'0 2px 6px rgba(100,70,30,0.2)'}}>
+                    textTransform:'uppercase', fontWeight:'bold'}}>
                     Player {player}
                   </div>
                   <p style={{margin:0, color:INK, fontSize:'12px', lineHeight:1.6}}>
                     {phase==='select'
-                      ? <span>Tap a piece to give<br/>to your opponent.</span>
-                      : <span>Place the piece<br/>on the board.</span>}
+                      ? 'Tap a piece to give to your opponent.'
+                      : 'Place the piece on the board.'}
                   </p>
                 </div>
               ) : (
                 <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
-                  <p style={{margin:0, color:AMBER, fontSize:'20px',
-                    fontWeight:'bold', lineHeight:1.3}}>
-                    {draw ? 'Draw!' : `Player ${winner} Wins!`}
+                  <p style={{margin:0, color:AMBER, fontSize:'20px', fontWeight:'bold'}}>
+                    {draw ? 'Draw!' : 'Player ' + winner + ' Wins!'}
                   </p>
                   <button onClick={reset} style={{background:'transparent',
-                    border:`1.5px solid ${AMBER}`, color:AMBER,
-                    padding:'8px 12px', borderRadius:'5px', cursor:'pointer',
-                    fontSize:'11px', letterSpacing:'1.5px',
-                    fontFamily:'Georgia,serif', textTransform:'uppercase'}}>
+                    border:'1.5px solid ' + AMBER, color:AMBER, padding:'8px 12px',
+                    borderRadius:'5px', cursor:'pointer', fontSize:'11px',
+                    fontFamily:'Georgia,serif', textTransform:'uppercase', letterSpacing:'1.5px'}}>
                     New Game
                   </button>
                 </div>
               )}
 
-              {/* Piece to place */}
               {active && phase==='place' && (
-                <div style={{display:'flex', flexDirection:'column',
-                  alignItems:'center', gap:'6px', padding:'10px 8px',
-                  borderRadius:'8px', background:'rgba(255,255,255,0.6)',
-                  border:`1px solid ${AMBER}55`}}>
+                <div style={{display:'flex', flexDirection:'column', alignItems:'center',
+                  gap:'6px', padding:'10px 8px', borderRadius:'8px',
+                  background:'rgba(255,255,255,0.6)', border:'1px solid ' + AMBER + '55'}}>
                   <p style={{margin:0, color:AMBER, fontSize:'8px',
                     letterSpacing:'2px', textTransform:'uppercase'}}>Must Place</p>
-                  <Piece piece={active} size={activePx} />
-                  <p style={{margin:0, color:INK_L, fontSize:'8px',
-                    textAlign:'center', lineHeight:1.4}}>{label(active)}</p>
+                  <Piece piece={active} size={actPx} />
+                  <p style={{margin:0, color:INK_L, fontSize:'8px', textAlign:'center'}}>
+                    {pieceLabel(active)}
+                  </p>
                 </div>
               )}
 
-              {/* Selected piece + confirm */}
               {phase==='select' && selected && !over && (
                 <div style={{display:'flex', flexDirection:'column', gap:'6px'}}>
-                  <div style={{display:'flex', flexDirection:'column',
-                    alignItems:'center', gap:'4px', padding:'8px',
-                    borderRadius:'6px', background:'rgba(255,255,255,0.6)',
-                    border:`1px dashed ${AMBER}66`}}>
-                    <Piece piece={selected} size={activePx} />
+                  <div style={{display:'flex', flexDirection:'column', alignItems:'center',
+                    gap:'4px', padding:'8px', borderRadius:'6px',
+                    background:'rgba(255,255,255,0.6)', border:'1px dashed ' + AMBER + '66'}}>
+                    <Piece piece={selected} size={actPx} />
                     <p style={{margin:0, color:INK_L, fontSize:'8px', textAlign:'center'}}>
-                      {label(selected)}
+                      {pieceLabel(selected)}
                     </p>
                   </div>
                   <button onClick={give} style={{
-                    background:`linear-gradient(135deg,${AMBER_L},${AMBER})`,
+                    background:'linear-gradient(135deg,' + AMBER_L + ',' + AMBER + ')',
                     color:'#FFF8EE', border:'none', padding:'10px 0',
                     borderRadius:'6px', cursor:'pointer', fontSize:'11px',
-                    fontWeight:'bold', fontFamily:'Georgia,serif', width:'100%',
-                    boxShadow:'0 3px 10px rgba(176,120,48,0.3)'}}>
-                    Give to Opponent →
+                    fontWeight:'bold', fontFamily:'Georgia,serif', width:'100%'}}>
+                    Give to Opponent
                   </button>
                 </div>
               )}
 
-              {/* Attribute key */}
               <div style={{marginTop:'auto', paddingTop:'8px',
                 borderTop:'1px solid rgba(140,110,70,0.2)'}}>
                 <p style={{margin:'0 0 4px', color:INK_L, fontSize:'8px',
                   letterSpacing:'1.5px', textTransform:'uppercase'}}>Attributes</p>
                 {[['Size','Tall · Short'],['Color','Light · Dark'],
-                  ['Shape','Square · Round'],['Fill','Hollow · Solid']].map(([k,v])=>(
-                  <div key={k} style={{display:'flex', justifyContent:'space-between', marginBottom:'2px'}}>
-                    <span style={{color:INK_L, fontSize:'8px'}}>{k}</span>
-                    <span style={{color:AMBER, fontSize:'8px'}}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── BOARD ───────────────────────────────────────────────────── */}
-            <div style={{flexShrink:0}}>
-              <div style={{
-                display:'grid',
-                gridTemplateColumns:`repeat(4,${cell}px)`,
-                gridTemplateRows:`repeat(4,${cell}px)`,
-                gap:'4px', padding:'12px',
-                background:BOARD, borderRadius:'10px',
-                border:'2px solid #2A1404',
-                boxShadow:'0 8px 32px rgba(100,70,30,0.25),inset 0 1px 0 rgba(255,255,255,0.08)'}}>
-                {board.map((row,r) => row.map((cell_,c) => {
-                  const win_    = isWin(r,c);
-                  const canDrop = phase==='place' && !cell_ && !over && active;
+                  ['Shape','Square · Round'],['Fill','Hollow · Solid']].map(function(kv) {
                   return (
-                    <div key={`${r}-${c}`} onClick={()=>place(r,c)}
-                      style={{width:cell, height:cell, borderRadius:'5px',
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        background: win_ ? CELL_WIN : CELL,
-                        border:`1px solid ${win_?'#B0783088':'rgba(140,110,70,0.2)'}`,
-                        cursor: canDrop?'pointer':'default',
-                        boxShadow: win_
-                          ? 'inset 0 0 16px rgba(176,120,48,0.3)'
-                          : 'inset 0 1px 0 rgba(255,255,255,0.4)',
-                        transition:'background 0.18s'}}>
-                      {cell_ && <Piece piece={cell_} size={mainPx} />}
-                      {!cell_ && canDrop && (
-                        <div style={{width:Math.round(cell*0.28), height:Math.round(cell*0.28),
-                          borderRadius:'50%', border:'2px dashed rgba(176,120,48,0.4)',
-                          animation:'pulse 1.8s ease-in-out infinite'}} />
-                      )}
+                    <div key={kv[0]} style={{display:'flex', justifyContent:'space-between', marginBottom:'2px'}}>
+                      <span style={{color:INK_L, fontSize:'8px'}}>{kv[0]}</span>
+                      <span style={{color:AMBER, fontSize:'8px'}}>{kv[1]}</span>
                     </div>
                   );
-                }))}
+                })}
               </div>
             </div>
 
-            {/* ── PIECE TRAY ──────────────────────────────────────────────── */}
-            <div style={{width:rightW, flexShrink:0,
-              display:'flex', flexDirection:'column', gap:'8px'}}>
+            {/* BOARD */}
+            <div style={{flexShrink:0}}>
+              <div style={{display:'grid',
+                gridTemplateColumns:'repeat(4,' + cell + 'px)',
+                gridTemplateRows:'repeat(4,' + cell + 'px)',
+                gap:'4px', padding:'12px', background:BOARD,
+                borderRadius:'10px', border:'2px solid #2A1404',
+                boxShadow:'0 8px 32px rgba(100,70,30,0.25)'}}>
+                {board.map(function(row, r) {
+                  return row.map(function(cellVal, c) {
+                    var win = isWinCell(r, c);
+                    var canDrop = phase==='place' && !cellVal && !over && active;
+                    return (
+                      <div key={r + '-' + c} onClick={function() { place(r, c); }}
+                        style={{width:cell, height:cell, borderRadius:'5px',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                          background: win ? CELL_WIN : CELL,
+                          border:'1px solid ' + (win ? '#B0783088' : 'rgba(140,110,70,0.2)'),
+                          cursor: canDrop ? 'pointer' : 'default',
+                          boxShadow: win ? 'inset 0 0 16px rgba(176,120,48,0.3)' : 'none'}}>
+                        {cellVal && <Piece piece={cellVal} size={mainPx} />}
+                        {!cellVal && canDrop && (
+                          <div style={{width:Math.round(cell*0.28), height:Math.round(cell*0.28),
+                            borderRadius:'50%', border:'2px dashed rgba(176,120,48,0.4)',
+                            animation:'pulse 1.8s ease-in-out infinite'}} />
+                        )}
+                      </div>
+                    );
+                  });
+                })}
+              </div>
+            </div>
+
+            {/* PIECE TRAY */}
+            <div style={{width:rightW, flexShrink:0, display:'flex', flexDirection:'column', gap:'8px'}}>
               <p style={{margin:0, color:INK_L, fontSize:'8px',
                 letterSpacing:'2px', textTransform:'uppercase'}}>
                 {avail.length} of 16 left
               </p>
               <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'4px'}}>
-                {ALL_PIECES.map(p => {
-                  const avl = isAvail(p);
-                  const used = placed.has(p.id) || active?.id===p.id;
-                  const sel  = selected?.id===p.id;
-                  const can  = avl && phase==='select' && !over;
+                {ALL_PIECES.map(function(p) {
+                  var avl  = isAvail(p);
+                  var used = placedIds[p.id] || (active && active.id === p.id);
+                  var sel  = selected && selected.id === p.id;
+                  var can  = avl && phase==='select' && !over;
                   return (
-                    <div key={p.id} onClick={()=>can&&pick(p)} title={label(p)}
+                    <div key={p.id} onClick={function() { if (can) pick(p); }}
+                      title={pieceLabel(p)}
                       style={{width:trayPx, height:trayPx, borderRadius:'5px',
                         display:'flex', alignItems:'center', justifyContent:'center',
                         position:'relative',
-                        background: sel?'rgba(176,120,48,0.15)':'rgba(255,255,255,0.5)',
-                        border:`1.5px solid ${sel?AMBER:'rgba(140,110,70,0.2)'}`,
-                        cursor: can?'pointer':'default',
-                        transform: sel?'scale(1.1)':'scale(1)',
+                        background: sel ? 'rgba(176,120,48,0.15)' : 'rgba(255,255,255,0.5)',
+                        border:'1.5px solid ' + (sel ? AMBER : 'rgba(140,110,70,0.2)'),
+                        cursor: can ? 'pointer' : 'default',
+                        transform: sel ? 'scale(1.1)' : 'scale(1)',
                         transition:'all 0.12s',
-                        boxShadow: sel?`0 0 8px rgba(176,120,48,0.35)`:'0 1px 2px rgba(100,70,30,0.08)'}}>
-                      <Piece piece={p} size={trayPiece} muted={used} />
+                        boxShadow: sel ? '0 0 8px rgba(176,120,48,0.35)' : 'none'}}>
+                      <Piece piece={p} size={trayP} muted={used} />
                       {used && (
                         <svg viewBox="0 0 100 100" preserveAspectRatio="none"
                           style={{position:'absolute', inset:3,
                             width:'calc(100% - 6px)', height:'calc(100% - 6px)',
                             pointerEvents:'none'}}>
                           <line x1="5" y1="5" x2="95" y2="95"
-                            stroke="rgba(180,30,30,0.8)" strokeWidth="12" strokeLinecap="round"/>
+                            stroke="rgba(180,30,30,0.85)" strokeWidth="14" strokeLinecap="round"/>
                           <line x1="95" y1="5" x2="5" y2="95"
-                            stroke="rgba(180,30,30,0.8)" strokeWidth="12" strokeLinecap="round"/>
+                            stroke="rgba(180,30,30,0.85)" strokeWidth="14" strokeLinecap="round"/>
                         </svg>
                       )}
                     </div>
@@ -391,14 +393,16 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<QuartoGame />);
+    ReactDOM.createRoot(document.getElementById('root')).render(
+      React.createElement(QuartoGame, null)
+    );
   </script>
 
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+      window.addEventListener('load', function() {
         navigator.serviceWorker.register('sw.js')
-          .catch(err => console.log('SW error:', err));
+          .catch(function(err) { console.log('SW error:', err); });
       });
     }
   </script>
